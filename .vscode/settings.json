@@ -1,0 +1,5 @@
+{
+    "containerApps.deployWorkspaceProject.containerAppResourceGroupName": "dm-faiss3",
+    "containerApps.deployWorkspaceProject.containerAppName": "dm-faiss3",
+    "containerApps.deployWorkspaceProject.containerRegistryName": "dmfaiss32d771a"
+}

@@ -396,3 +396,11 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Custom
+.venv/
+*.csv
+*.zip
+*.env
+.deploy.env
+.azure

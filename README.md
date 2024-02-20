@@ -1,57 +1,101 @@
-# Project Name
+# MSSQL-FAISS POC integration samples
 
-(short, 1-3 sentenced, description of the project)
+Build a FAISS or KMEANS model store it in MSSQL. 
 
-## Features
+For FAISS also build a containerized REST service and expose FAISS via REST API that can be consumed by T-SQL. 
 
-This project framework provides the following features:
+For KMEANS also creates a T-SQL function to allow approximate search.
 
-* Feature 1
-* Feature 2
-* ...
+## Requirements
 
-## Getting Started
+You need
 
-### Prerequisites
+- Visual Studio Code Code
+- [Visual Studio Code Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers)
+- Docker Desktop
 
-(ideally very short, if any)
+## Local execution
 
-- OS
-- Library version
-- ...
+Make sure that Docker Desktop is running. Clone the repository and open the `poc` folder in Visual Studio Code. The Dev Containers extension, after a few seconds, will ask you to open the folder in a container. If VS Code doesn't ask you to open the folder in a Dev Container, hit `F1` and then type `Dev Containers: Reopen in Container`. Do it and then open the terminal in Visual Studio Code. 
 
-### Installation
+Create a new database in Azure SQL DB or use an existing one, then create and import a sample of Wikipedia data using script `sql/import-wikipedia.sql`.
 
-(ideally very short)
+Create a new file named `.env` in the `poc` folder using the `.env.sample` as a starting point. Add the connection string to the database with the Wikipedia sample data.
 
-- npm install [package name]
-- mvn install
-- ...
+## FAISS Test
 
-### Quickstart
-(Add steps to get up and running quickly)
+Use `mssql_cli.py` to create and test FAISS index on the imported wikipedia articles and store the FAISS model in MSSQL. 
 
-1. git clone [repository clone url]
-2. cd [repository name]
-3. ...
+Create and store a FAISS index using
 
+```bash
+python mssql_cli.py --type "faiss" 
+```
 
-## Demo
+Creating the index may take a while. Once the index is created you can test by running:
 
-A demo app is included to show how to use the project.
+```bash
+python mssql_cli.py --text "isaac asimov" --type "faiss" 
+```
 
-To run the demo, follow these steps:
+To get the ids of the wikipedia articles most similar to the searched text. You can use the returned in the `/sql/faiss/faiss_test.sql` to get the article titles.
 
-(Add steps to start up the demo)
+### Running FAISS as a REST service
 
-1.
-2.
-3.
+To integrate with Azure SQL DB via `sp_invoke_external_rest_endpoint` a REST service is needed. A sample REST API has been created to allow interaction with FAISS. Run the server using:
 
-## Resources
+```bash
+uvicorn mssql_api:app
+```
 
-(Any additional resources or related projects)
+to serve the FAISS index as a REST endpoint.
 
-- Link to supporting information
-- Link to similar sample
-- ...
+Once the server is started you can use 
+
+```http
+GET http://127.0.0.1:8000/index/faiss/info
+```
+
+if the index has been loaded and it is ready, and 
+
+```http
+POST http://127.0.0.1:8000/index/faiss/query
+```
+
+To send a vector to search for similarity
+
+```http
+POST http://127.0.0.1:8000/index/faiss/add
+```
+
+To add a vector to the index.
+
+The REST API has been deployed already in an Azure Container Instance here:
+
+```
+https://dm-faiss.purpleflower-af782b2e.centralus.azurecontainerapps.io
+```
+
+A sample integration with Azure SQL DB can be test using the `/sql/faiss/faiss_sidecar_test.sql` script.
+
+## KMEANS Test
+
+Create and store a KMEANS model using
+
+```bash
+python mssql_cli.py --type "kmeans" 
+```
+
+This will take a while as it has to create clustered columnstore indexes in addition to find the kmeans clusters.
+
+It will create the KMeans model with 50 clusters and then will save the cluster and cluster centroids into SQL tables:
+
+- `[$vector].[wikipedia_articles_embeddings]` - the vectors saved into exploded format (one dimension value per row)
+- `[$vector].[wikipedia_articles_embeddings$centroids]` - the centroid vectors saved into exploded format (one dimension value per row)
+- `[$vector].[wikipedia_articles_embeddings$clusters]` - associaction of each vector to its assigned cluster
+
+and it will also create the function `$vector].[find_similar$wikipedia_articles_embeddings]` to make it easier to do similiarity search. A sample on how to use the function is in the `sql/kmeans/find_similarity_test.sql` script.
+
+### Running KMEANS as a REST service
+
+Work in progress, POC for REST service not ready yet. :)
