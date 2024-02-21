@@ -1,7 +1,6 @@
 import json
 import numpy as np
 from enum import StrEnum, Enum
-from apscheduler.triggers.cron import CronTrigger
 
 class IndexStatus(StrEnum):
     INITIALIZING = 'initializing'
@@ -66,21 +65,3 @@ class VectorSet:
     def get_memory_usage(self):
         return self.ids.nbytes + self.vectors.nbytes
     
-class ConfigParser:
-    def __init__(self, configuration) -> None:
-        self._configuration = configuration
-
-    def get_cron_trigger(self, property_name, default_value) -> CronTrigger:
-        cron_exp = self._configuration[property_name] or default_value
-        cron_items = cron_exp.split(" ")
-        if (len(cron_items) != 6):
-            raise Exception("crontab expression must have 6 values (sec min hour day_of_month month day_of_week).")
-
-        return CronTrigger(
-            second=cron_items[0],
-            minute=cron_items[1],
-            hour=cron_items[2],
-            day=cron_items[3],
-            month=cron_items[4],
-            day_of_week=cron_items[5]
-        )

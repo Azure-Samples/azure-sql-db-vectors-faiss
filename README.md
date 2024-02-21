@@ -4,8 +4,6 @@ Build a FAISS or KMEANS model store it in MSSQL.
 
 For FAISS also build a containerized REST service and expose FAISS via REST API that can be consumed by T-SQL. 
 
-For KMEANS also creates a T-SQL function to allow approximate search.
-
 ## Requirements
 
 You need
@@ -24,19 +22,7 @@ Create a new file named `.env` in the `poc` folder using the `.env.sample` as a 
 
 ## FAISS Test
 
-Use `mssql_cli.py` to create and test FAISS index on the imported wikipedia articles and store the FAISS model in MSSQL. 
-
-Create and store a FAISS index using
-
-```bash
-python mssql_cli.py --type "faiss" 
-```
-
-Creating the index may take a while. Once the index is created you can test by running:
-
-```bash
-python mssql_cli.py --text "isaac asimov" --type "faiss" 
-```
+TDB
 
 To get the ids of the wikipedia articles most similar to the searched text. You can use the returned in the `/sql/faiss/faiss_test.sql` to get the article titles.
 
@@ -45,7 +31,8 @@ To get the ids of the wikipedia articles most similar to the searched text. You 
 To integrate with Azure SQL DB via `sp_invoke_external_rest_endpoint` a REST service is needed. A sample REST API has been created to allow interaction with FAISS. Run the server using:
 
 ```bash
-uvicorn mssql_api:app
+cd src
+uvicorn main:api
 ```
 
 to serve the FAISS index as a REST endpoint.
@@ -78,24 +65,3 @@ https://dm-faiss.purpleflower-af782b2e.centralus.azurecontainerapps.io
 
 A sample integration with Azure SQL DB can be test using the `/sql/faiss/faiss_sidecar_test.sql` script.
 
-## KMEANS Test
-
-Create and store a KMEANS model using
-
-```bash
-python mssql_cli.py --type "kmeans" 
-```
-
-This will take a while as it has to create clustered columnstore indexes in addition to find the kmeans clusters.
-
-It will create the KMeans model with 50 clusters and then will save the cluster and cluster centroids into SQL tables:
-
-- `[$vector].[wikipedia_articles_embeddings]` - the vectors saved into exploded format (one dimension value per row)
-- `[$vector].[wikipedia_articles_embeddings$centroids]` - the centroid vectors saved into exploded format (one dimension value per row)
-- `[$vector].[wikipedia_articles_embeddings$clusters]` - associaction of each vector to its assigned cluster
-
-and it will also create the function `$vector].[find_similar$wikipedia_articles_embeddings]` to make it easier to do similiarity search. A sample on how to use the function is in the `sql/kmeans/find_similarity_test.sql` script.
-
-### Running KMEANS as a REST service
-
-Work in progress, POC for REST service not ready yet. :)

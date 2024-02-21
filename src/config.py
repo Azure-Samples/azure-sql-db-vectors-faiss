@@ -1,4 +1,4 @@
-EMBEDDINGS = {
+INDEX = {
     'SCHEMA': 'dbo',
     'TABLE': 'wikipedia_articles_embeddings',
     'COLUMN': {
@@ -10,7 +10,7 @@ EMBEDDINGS = {
     }
 }
 
-VEX = {
+BACKGROUND_JOBS = {
     "CHANGE_TRACKING_CRONTAB": "*/1 * * * * *",
-    "SAVE_INDEX_CRONTAB": "* */5 * * * *"
+    "SAVE_INDEX_CRONTAB": "0 */1 * * * *"
 }

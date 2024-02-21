@@ -18,18 +18,21 @@ class DatabaseEngine:
             if schema_id('$vector') is null begin
                 exec('create schema [$vector] authorization dbo')
             end
-            if object_id('[$vector].[index]') is null begin
-                create table [$vector].[index]
+            if object_id('[$vector].[faiss]') is null begin
+                create table [$vector].[faiss]
                 (
                     [id] int not null,
-                    [type] varchar(50) not null,
-                    [class] varchar(50) not null,
+                    [source_table_name] sysname not null,
+                    [id_column_name] sysname not null,
+                    [vector_column_name] sysname not null,
                     [data] varbinary(max) not null,
                     [item_count] int not null,
-                    [vector_dimensions] int not null,
-                    [data_version] int not null default 0,
-                    [saved_on] datetime2 not null,
-                    primary key ([id], [type])
+                    [dimension_count] int null,
+                    [data_version] int not null default(0),
+                    [status] varchar(100) not null,
+                    [updated_on] datetime2 not null,
+                    primary key ([id]),
+                    unique nonclustered ([source_table_name], [vector_column_name])
                 )
             end                                                              
         """)
@@ -37,29 +40,41 @@ class DatabaseEngine:
         conn.commit()
         conn.close()
 
-    def save_index(self, index_num:int, index_type, index_class, index_bin, vectors_count:int, dimensions_count:int, version:int):
+    def save_index(self, index_id:int, index_bin, vectors_count:int, dimension_count:int, data_version:int):
+        CONFIG = self._configuration
+        source_table_name = f'[{CONFIG["SCHEMA"]}].[{CONFIG["TABLE"]}]'
+        id_column_name = CONFIG["COLUMN"]["ID"]
+        vector_column_name = CONFIG["COLUMN"]["VECTOR"]
         conn = pyodbc.connect(self._connection_string) 
 
         cursor = conn.cursor()  
-        cursor.execute("delete from [$vector].[index] where id = ? and [type] = ?", index_num, index_type)
+        cursor.execute("delete from [$vector].[faiss] where id = ?", index_id)
         conn.commit()
 
         cursor.execute("""
-            insert into [$vector].[index] 
-                ([id], [type], [class], [data], [item_count], [vector_dimensions], [data_version], [saved_on]) 
+            insert into [$vector].[faiss] 
+                ([id], [source_table_name], [id_column_name], [vector_column_name], [data], [item_count], [dimension_count], [data_version], [updated_on], [status])
             values 
-                (?, ?, ?, ?, ?, ?, ?, sysdatetime());""", 
-            index_num, index_type, index_class, index_bin, vectors_count, dimensions_count, version)
+                (?, ?, ?, ?, ?, ?, ?, ?, sysdatetime(), ?);""", 
+            index_id, 
+            source_table_name, 
+            id_column_name, 
+            vector_column_name, 
+            index_bin, 
+            vectors_count, 
+            dimension_count, 
+            data_version,
+            "CREATED")
         conn.commit()
 
         cursor.close()
         conn.close()
 
-    def load_index(self, index_num: int, index_type):
+    def load_index(self, index_num: int):
         conn = pyodbc.connect(self._connection_string) 
         cursor = conn.cursor()  
 
-        row = cursor.execute(f"select [data], [data_version] from [$vector].[index] where id = ? and [type] = ?", index_num, index_type).fetchone()
+        row = cursor.execute(f"select [data], [data_version] from [$vector].[faiss] where id = ?", index_num).fetchone()
         if row == None:
             return None, 0
         pkl = row[0]
@@ -70,17 +85,17 @@ class DatabaseEngine:
         return pkl, version
     
     def load_vectors_from_db(self):    
-        #_logger.info(f"Configuration: {self._configuration}")
         conn = pyodbc.connect(self._connection_string) 
         cursor = conn.cursor()  
         current_version = cursor.execute("select change_tracking_current_version() as current_version;").fetchval()
         cursor.close()
 
         query = self.__get_select_embeddings()
-        cursor = conn.cursor()
-        cursor.execute(query)
         buffer = Buffer()    
         result = VectorSet(self._configuration["VECTOR"]["DIMENSIONS"])
+        cursor = conn.cursor()
+        cursor.execute(query)
+        tr = 0
         while(True):
             buffer.clear()    
             rows = cursor.fetchmany(10000)
@@ -91,24 +106,12 @@ class DatabaseEngine:
             for idx, row in enumerate(rows):
                 buffer.add(row.item_id, json.loads(row.vector))
             
-            result.add(buffer)            
+            result.add(buffer)
+            tr += (idx+1)
+
             mf = int(result.get_memory_usage() / 1024 / 1024)
-            _logger.info("Loaded {0} rows, total memory footprint {1} MB".format(idx+1, mf))        
+            _logger.info("Loaded {0} rows, total rows {1}, total memory footprint {2} MB".format(idx+1, tr, mf))        
             
-        # for idx, row in enumerate(rows):
-        #     buffer.add(row.item_id, json.loads(row.vector))
-
-        #     if (idx > 0 and (idx+1) % 10000 == 0):
-        #         result.add(buffer)            
-        #         mf = int(result.get_memory_usage() / 1024 / 1024)
-        #         print("  Loaded {0} rows, memory footprint {1} MB".format(idx+1, mf))
-        #         buffer.clear()     
-
-        # if len(buffer.vectors) > 0:
-        #     result.add(buffer)
-        #     mf = int(result.get_memory_usage() / 1024 / 1024)
-        #     print("  Loaded {0} rows, memory footprint {1} MB".format(idx+1, mf))
-
         cursor.close()
         conn.commit()
         conn.close()
@@ -178,7 +181,7 @@ class DatabaseEngine:
         return result
 
     def __get_select_embeddings(self):
-        limit:int = int(os.environ["LIMIT_ROWS"])
+        limit:int = int(os.environ["LIMIT_ROWS"] or -1) 
         config = self._configuration
 
         if (limit == -1):

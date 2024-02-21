@@ -22,7 +22,7 @@ class FaissIndex(BaseIndex):
         self.status = IndexStatus.CREATING
         self.index = None
         
-        _logger.info(f"Starting created index #{self._index_num}...")
+        _logger.info(f"Starting create index #{self._index_num}...")
 
         _logger.info("Loading data...")
         version, ids, vectors = self._db.load_vectors_from_db()
@@ -53,7 +53,7 @@ class FaissIndex(BaseIndex):
         
         _logger.info(f"Loading index #{self._index_num}...")
         
-        pkl, version = self._db.load_index(self._index_num, 'faiss')   
+        pkl, version = self._db.load_index(self._index_num)   
         
         if pkl == None:
             _logger.info("No index found.")
@@ -76,6 +76,7 @@ class FaissIndex(BaseIndex):
         if not (self.status == IndexStatus.TRAINED and 
             self.substatus == IndexSubStatus.READY and
             self._data_version != self._saved_data_version):
+            _logger.info("Index already saved and no changes detected, skipping save request.")
             return
         
         _logger.info(f"Saving index #{self._index_num}...")
@@ -83,8 +84,6 @@ class FaissIndex(BaseIndex):
         pkl = pickle.dumps(self.index)
         self._db.save_index(
             self._index_num, 
-            "faiss", 
-            type(self.index).__name__,
             pkl, 
             self.index.ntotal, 
             self.index.d, 
