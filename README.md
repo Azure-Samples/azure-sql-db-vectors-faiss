@@ -22,7 +22,7 @@ Create a new file named `.env` in the `poc` folder using the `.env.sample` as a 
 
 ## FAISS Test
 
-TDB
+TDB - See https://github.com/Azure-Samples/azure-sql-db-vectors-kmeans for now
 
 To get the ids of the wikipedia articles most similar to the searched text. You can use the returned in the `/sql/faiss/faiss_test.sql` to get the article titles.
 
