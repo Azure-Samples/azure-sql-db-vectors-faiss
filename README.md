@@ -1,6 +1,6 @@
 # MSSQL-FAISS POC integration samples
 
-Build a FAISS or KMEANS model store it in MSSQL. 
+Build a FAISS model store it in MSSQL. 
 
 For FAISS also build a containerized REST service and expose FAISS via REST API that can be consumed by T-SQL. 
 
