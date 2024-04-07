@@ -1,6 +1,8 @@
 # MSSQL-FAISS POC integration samples
 
-Build a FAISS or KMEANS model store it in MSSQL. 
+NOTE - README IS WORK IN PROGRESS
+
+Build a FAISS model store it in MSSQL. 
 
 For FAISS also build a containerized REST service and expose FAISS via REST API that can be consumed by T-SQL. 
 
@@ -22,7 +24,7 @@ Create a new file named `.env` in the `poc` folder using the `.env.sample` as a 
 
 ## FAISS Test
 
-TDB
+TDB - See https://github.com/Azure-Samples/azure-sql-db-vectors-kmeans for now
 
 To get the ids of the wikipedia articles most similar to the searched text. You can use the returned in the `/sql/faiss/faiss_test.sql` to get the article titles.
 
