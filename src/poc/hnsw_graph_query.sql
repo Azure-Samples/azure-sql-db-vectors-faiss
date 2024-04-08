@@ -6,12 +6,12 @@ drop table if exists #t0
 
 declare @v varbinary(8000)
 declare @t int = 10
-declare @p int = 32 -- probes
+declare @efSearch int = 32 -- probes
 select @v = title_vector_native from [dbo].[wikipedia_articles_title_embeddings_native] where title = 'New York'
 ;
 
 -- Level 3
-select top(@p)
+select top(@efSearch)
     t.id,
     vector_distance('cosine', @v, t.title_vector_native) as cosine_distance
 into 
@@ -30,7 +30,7 @@ with cte as (
     from [$vector].faiss_hnsw l
     inner join #t3 pl on l.id = pl.id and l.l=2
 )
-select top(@p)
+select top(@efSearch)
     t.id,
     vector_distance('cosine', @v, t.title_vector_native) as cosine_distance
 into 
@@ -49,7 +49,7 @@ with cte as (
     from [$vector].faiss_hnsw l
     inner join #t2 pl on l.id = pl.id and l.l=1
 )
-select top(@p)
+select top(@efSearch)
     t.id,
     vector_distance('cosine', @v, t.title_vector_native) as cosine_distance
 into 
@@ -68,7 +68,7 @@ with cte as (
     from [$vector].faiss_hnsw l
     inner join #t1 pl on l.id = pl.id and l.l=0
 )
-select top(@p)
+select top(@efSearch)
     t.id,
     vector_distance('cosine', @v, t.title_vector_native) as cosine_distance
 into 
