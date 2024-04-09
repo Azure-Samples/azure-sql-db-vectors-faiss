@@ -1,7 +1,9 @@
+set statistics time on
+
 declare @top int = 10
 declare @efSearch int = 32
 declare @v varbinary(8000)
-select @v = title_vector_native from [dbo].[wikipedia_articles_title_embeddings_native] where title = 'New York';
+select @v = title_vector_native from [dbo].[wikipedia_articles_title_embeddings_native] where title = 'Seattle';
 
 -- Level 3
 with l3 as (
@@ -62,6 +64,7 @@ l0 as (
 )
 select top(@top)
     t.id,
+    t.title,
     vector_distance('cosine', @v, t.title_vector_native) as cosine_distance
 from 
     (

@@ -37,6 +37,22 @@ class VectorSet:
     def get_memory_usage(self):
         return self.ids.nbytes + self.vectors.nbytes
     
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.int32):
+            return int(obj)
+        if isinstance(obj, np.int64):
+            return int(obj)
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.float32):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
+     
 def load_vectors_from_db():    
         conn = pyodbc.connect(os.environ["MSSQL"]) 
         query = "SELECT id AS item_id, title_vector AS vector FROM [dbo].[wikipedia_articles_title_embeddings_native] ORDER BY item_id"

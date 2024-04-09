@@ -19,6 +19,7 @@ RUN localedef -i en_US -f UTF-8 en_US.UTF-8
 
 # install packages
 RUN conda install -c conda-forge \
+    openai \
     faiss-cpu \ 
     pyodbc \
     python-multipart python-dotenv \    

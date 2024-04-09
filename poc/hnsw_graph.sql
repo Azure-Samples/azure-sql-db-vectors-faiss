@@ -1,8 +1,8 @@
 create table [$vector].[faiss_hnsw]
 (
-	[id] [int] not null,
-	[id_neighbor] [int] not null,
-	[l] [int] not null
+	[id] [int] not null, -- vector id
+	[id_neighbor] [int] not null, -- neighbors
+	[l] [int] not null -- level
 ) on [primary]
 go
 
@@ -11,4 +11,7 @@ go
 
 select used_page_count * 8. / 1024., row_count from sys.dm_db_partition_stats
 where object_id = object_id('$vector.faiss_hnsw')
+go
+
+select l, count(*) from [$vector].faiss_hnsw with (readuncommitted) group by l order by l
 go
