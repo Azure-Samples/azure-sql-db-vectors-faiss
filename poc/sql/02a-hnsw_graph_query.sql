@@ -7,7 +7,7 @@ drop table if exists #t0
 declare @v varbinary(8000)
 declare @t int = 10
 declare @efSearch int = 32 -- probes
-select @v = title_vector_native from [dbo].[wikipedia_articles_title_embeddings_native] where title = 'New York'
+select @v = title_vector_native from [dbo].[wikipedia_articles_title_embeddings_native] where title = 'Seattle'
 ;
 
 -- Level 3
