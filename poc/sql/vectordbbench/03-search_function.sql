@@ -1,16 +1,17 @@
-
-set statistics time on
-
-declare @top int = 10
-declare @efSearch int = 48
-declare @v varbinary(8000)
-select @v = vector from [benchmark].[vector_768] where id=101;
-
+create or alter function [benchmark].[vector_768$hsnw_search](
+    @metric varchar(10),
+    @top int,
+    @efSearch int,
+    @v varbinary(8000)
+)
+returns table
+as
+return
 -- Level 3
 with [entry] as (
     select top(@efSearch)
         t.id,
-        vector_distance('cosine', @v, t.vector) as cosine_distance
+        vector_distance(@metric, @v, t.vector) as distance
     from 
         (
             select distinct h.id from [$vector].faiss_hnsw h where h.l=3     
@@ -18,12 +19,12 @@ with [entry] as (
     inner join
         [benchmark].[vector_768] t on l.id = t.id 
     order by
-        cosine_distance 
+        distance 
 ),
 l3 as (
     select top(@efSearch)
         t.id,
-        vector_distance('cosine', @v, t.vector) as cosine_distance
+        vector_distance(@metric, @v, t.vector) as distance
     from 
         (
             select distinct id_neighbor as id 
@@ -33,12 +34,12 @@ l3 as (
     inner join 
         [benchmark].[vector_768] t on l.id = t.id
     order by
-        cosine_distance 
+        distance 
 ),
 l2 as (
     select top(@efSearch)
         t.id,
-        vector_distance('cosine', @v, t.vector) as cosine_distance
+        vector_distance(@metric, @v, t.vector) as distance
     from 
         (
             select distinct id_neighbor as id 
@@ -48,12 +49,12 @@ l2 as (
     inner join 
         [benchmark].[vector_768] t on l.id = t.id
     order by
-        cosine_distance 
+        distance 
 ), 
 l1 as (
     select top(@efSearch)
         t.id,
-        vector_distance('cosine', @v, t.vector) as cosine_distance
+        vector_distance(@metric, @v, t.vector) as distance
     from 
         (
             select distinct id_neighbor as id 
@@ -63,12 +64,12 @@ l1 as (
     inner join 
         [benchmark].[vector_768] t on l.id = t.id
     order by
-        cosine_distance 
+        distance 
 ), 
 l0 as (
     select top(@efSearch)
         t.id,
-        vector_distance('cosine', @v, t.vector) as cosine_distance
+        vector_distance(@metric, @v, t.vector) as distance
     from 
         (
             select distinct id_neighbor as id 
@@ -78,11 +79,11 @@ l0 as (
     inner join 
         [benchmark].[vector_768] t on l.id = t.id
     order by
-        cosine_distance 
+        distance 
 )
 select top(@top)
     t.id,
-    vector_distance('cosine', @v, t.vector) as cosine_distance
+    vector_distance(@metric, @v, t.vector) as distance
 from 
     (
         select distinct id_neighbor as id 
@@ -92,6 +93,5 @@ from
 inner join 
     [benchmark].[vector_768] t on f.id = t.id
 order by
-    cosine_distance 
-option
-    (maxdop 1)
+    distance 
+
