@@ -6,12 +6,16 @@ import json
 import numpy as np
 import faiss
 import struct
+from alive_progress import alive_bar, config_handler
+import time
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
+
+config_handler.set_global(spinner=None)
 
 class Buffer:
     def __init__(self):
@@ -90,22 +94,26 @@ def load_vectors_from_db(table_name:str, id_column:str, vector_column:str, vecto
     cursor = conn.cursor()
     cursor.execute(query)
     tr = 0
-    while(True):
-        buffer.clear()    
-        rows = cursor.fetchmany(10000)
-        if (rows == []):
-            logging.info("Done")
-            break
+    with (alive_bar(top_n)) as bar:
+        while(True):
+            buffer.clear()    
+            rows = cursor.fetchmany(10000)
+            if (rows == []):
+                logging.info("Done")
+                break
 
-        for idx, row in enumerate(rows):
-            #buffer.add(row.item_id, json.loads(row.vector))
-            buffer.add(row.item_id, vector_to_array(row.vector))
-        
-        result.add(buffer)
-        tr += (idx+1)
+            for idx, row in enumerate(rows):
+                #buffer.add(row.item_id, json.loads(row.vector))
+                buffer.add(row.item_id, vector_to_array(row.vector))
+            
+            result.add(buffer)
+            tr += (idx+1)
 
-        mf = int(result.get_memory_usage() / 1024 / 1024)
-        logging.info("Loaded {0} rows, total rows {1}, total memory footprint {2} MB".format(idx+1, tr, mf))        
+            mf = int(result.get_memory_usage() / 1024 / 1024)
+            bar(len(rows))
+            bar.text('Memory footprint: {0} MB'.format(mf))
+    
+    logging.info("Loaded {0} total rows, total memory footprint {1} MB".format(tr, mf))        
         
     cursor.close()
     conn.commit()
@@ -214,7 +222,12 @@ def save_hnsw_graph_to_db(ids, hnsw):
     cursor.execute("truncate table [$vector].[faiss_hnsw]")
     cursor.commit()
 
-    cursor.execute("drop index ixc on [$vector].[faiss_hnsw]")
+    cursor.execute(f"""
+        if exists(select * from sys.indexes where [name] = 'ixc' and object_id = object_id('[$vector].[faiss_hnsw]'))
+        begin
+            drop index ixc on [$vector].[faiss_hnsw]
+        end
+        """)
     cursor.commit()
 
     cursor.execute(f""" 
@@ -255,39 +268,43 @@ def save_hnsw_graph_to_db(ids, hnsw):
     # Within the offset, the position at which each level starts
     neighbors_per_level = faiss.vector_to_array(hnsw.cum_nneighbor_per_level)
     
+    # Find total edges
     t = len([n for n in neighbors if n >= 0])
     logging.info(f"Inserting {t} records...")
 
     # for each vector
     p = []
     r = 0;
-    for i in range(len(ids)):
-        # vector id
-        id = ids[i]
+    with (alive_bar(t)) as bar:
+        for i in range(len(ids)):
+            # vector id
+            id = ids[i]
 
-        # get all neighbors
-        vn = neighbors[offsets[i] : offsets[i + 1]]
+            # get all neighbors
+            vn = neighbors[offsets[i] : offsets[i + 1]]
 
-        # for each level
-        for l in range(levels[i]):
-            # get neighbors at level
-            vnl = vn[neighbors_per_level[l] : neighbors_per_level[l + 1]]
+            # for each level
+            for l in range(levels[i]):
+                # get neighbors at level
+                vnl = vn[neighbors_per_level[l] : neighbors_per_level[l + 1]]
 
-            p += [(int(id), int(ids[v]), l) for v in vnl if v != -1]
+                p += [(int(id), int(ids[v]), l) for v in vnl if v != -1]
 
-            if len(p) >= 10000:
-                r += len(p)
-                logging.info(f"Inserting {len(p)} records ({r} of {t})...")
-                cursor.execute("EXEC dbo.stp_load_faiss_hnsw @dummy=?, @payload=?", (1, p))  
-                cursor.commit()
-                p = []   
+                if len(p) >= 10000:
+                    r += len(p)
+                    bar(len(p))
+                    #logging.info(f"Inserting {len(p)} records ({r} of {t})...")
+                    cursor.execute("EXEC dbo.stp_load_faiss_hnsw @dummy=?, @payload=?", (1, p))  
+                    cursor.commit()
+                    p = []   
                 
-    if len(p) > 0:
-        r += len(p)
-        logging.info(f"Inserting {len(p)} records ({r} of {t})...")
-        cursor.execute("EXEC dbo.stp_load_faiss_hnsw @dummy=?, @payload=?", (1, p))  
-        cursor.commit()
-        p = []
+        if len(p) > 0:
+            r += len(p)
+            bar(len(p))
+            #logging.info(f"Inserting {len(p)} records ({r} of {t})...")
+            cursor.execute("EXEC dbo.stp_load_faiss_hnsw @dummy=?, @payload=?", (1, p))  
+            cursor.commit()
+            p = []
     
     logging.info(f"{r} record inserted.")
 
