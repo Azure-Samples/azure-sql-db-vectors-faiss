@@ -1,26 +1,23 @@
 import os
 import logging
+import json
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException, status as HTTPStatus, Response
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
-from apscheduler.schedulers.background import BackgroundScheduler
 
-from sqlext.index import NoIndex
-from sqlext.database import DatabaseEngine
-from sqlext.faiss import FaissIndex, IndexStatus, UpdateResult
+from db.index import NoIndex
+from db.utils import DataSourceConfig
+from db.faiss import FaissIndex, IndexStatus, UpdateResult
+from internals import State, Vector, ConfigParser, IndexRequest
 
-from internals import State, Vector, ConfigParser
-
-from config import INDEX, BACKGROUND_JOBS
+from config import BACKGROUND_JOBS
 
 load_dotenv()
 
-_logger = logging.getLogger("uvicorn")
-
-index_num = os.environ["DEFAULT_INDEX_MODEL_ID"] or 1
 api_version = "0.0.3"
+
+_logger = logging.getLogger("uvicorn")
 
 state = State()
 
@@ -34,9 +31,9 @@ async def lifespan(app: FastAPI):
     _logger.info("Save Index Schedule: " + str(_save_index_trigger))
 
     scheduler = state.get_scheduler()
-    scheduler.add_job(change_tracking_monitor, _change_tracking_trigger, id='change_monitor', coalesce=True)
-    scheduler.add_job(save_index, _save_index_trigger, id='save_index', coalesce=True)
-    scheduler.add_job(bootstrap, id="bootstrap")
+    #scheduler.add_job(change_tracking_monitor, _change_tracking_trigger, id='change_monitor', coalesce=True)
+    #cheduler.add_job(save_index, _save_index_trigger, id='save_index', coalesce=True)
+    #scheduler.add_job(bootstrap, id="bootstrap")
     scheduler.start()    
     _logger.info("Starting API...")
     yield
@@ -94,20 +91,54 @@ def change_tracking_monitor():
 @api.get("/")
 def welcome():
     return {
-            "server": "running",
+            "server": state.get_status(),
             "version": api_version
             }
 
-@api.post("/index/faiss/create")
-def faiss_create(tasks: BackgroundTasks):    
-    if (isinstance(state.index, NoIndex)):
-        _logger.info("No index found, creating FAISS index...")
-        state.index = FaissIndex(state.database_engine)
+# @api.post("/faiss/build")
+# def build(tasks: BackgroundTasks, indexRequest: IndexRequest, force: bool = False):    
+#     if (isinstance(state.index, NoIndex)):
+#         _logger.info("No index found, creating FAISS index...")
+#         state.index = FaissIndex(state.database_engine)
 
-    tasks.add_task(state.index.create)    
-    return Response(status_code=202)     
+#     tasks.add_task(state.index.create)    
+#     return Response(status_code=202)     
 
-@api.post("/index/faiss/query")
+
+@api.post("/faiss/build")
+def build(tasks: BackgroundTasks, indexRequest: IndexRequest, force: bool = False): 
+    if (isinstance(state.index, NoIndex) == False):        
+        raise HTTPException(detail=f"An index (#{state.index.id}) is already being built.", status_code=500)
+      
+    config = DataSourceConfig()
+    config.source_table_schema = indexRequest.table.table_schema
+    config.source_table_name = indexRequest.table.table_name
+    config.source_id_column_name = indexRequest.column.id
+    config.source_vector_column_name = indexRequest.column.vector
+    config.vector_dimensions = indexRequest.vector.dimensions
+  
+    id = None
+    try:
+        state.set_status("initializing")
+        state.index = FaissIndex.from_config(config)
+        id = state.index.initialize_build(force)
+    except Exception as e:
+        _logger.error(f"Error during initialization: {e}")
+        state.set_status("error during initialization: " + str(e))
+        state.clear()
+        raise HTTPException(detail=str(e), status_code=500)
+
+    tasks.add_task(_internal_build) 
+
+    r = {
+            "id": int(id),
+            "status": state.get_status()
+        }
+    j = json.dumps(r, default=str)
+
+    return Response(content=j, status_code=202, media_type='application/json')
+
+@api.post("/faiss/query")
 def faiss_query(query: Vector):
     assert_index_is_ready()
     return state.index.query(query.vector, 10)
@@ -119,7 +150,7 @@ def faiss_query(query: Vector):
 #     index.add_with_ids(np.asarray([query.vector]), np.asarray([query.id]))
 #     return get_index_status()
 
-@api.post("/index/faiss/load")
+@api.post("/faiss/load")
 def faiss_create(tasks: BackgroundTasks):      
     if (isinstance(state.index, NoIndex)):
         _logger.info("No index found, loading FAISS index...")
@@ -128,14 +159,24 @@ def faiss_create(tasks: BackgroundTasks):
     tasks.add_task(state.index.load)    
     return Response(status_code=202)
 
-@api.post("/index/faiss/save")
+@api.post("/faiss/save")
 def faiss_create(tasks: BackgroundTasks):    
     assert_index_is_ready()
     tasks.add_task(state.index.save)    
     return Response(status_code=202)
 
-@api.get("/index/faiss/info")
-def faiss_info():
-    return {
-        "state": state.index.get_status()
-    }
+# @api.get("/faiss/info")
+# def faiss_info():
+#     return {
+#         "state": state.index.get_status()
+#     }
+
+def _internal_build():
+    try:
+        state.set_status("building")
+        state.index.build()
+    except Exception as e:
+        _logger.error(f"Error building index: {e}")
+        state.set_status("error during index build: " + str(e))
+    finally:
+        state.clear()

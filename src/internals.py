@@ -1,11 +1,27 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from sqlext.database import DatabaseEngine
-from sqlext.index import NoIndex
+from db.database import DatabaseEngine
+from db.index import NoIndex
 
-from config import INDEX, BACKGROUND_JOBS
+from config import BACKGROUND_JOBS
+
+class TableInfo(BaseModel):
+    table_schema: str = Field(alias="schema")
+    table_name: str = Field(alias="name")
+
+class ColumnInfo(BaseModel):
+    id: str 
+    vector: str 
+
+class VectorInfo(BaseModel):
+    dimensions: int
+
+class IndexRequest(BaseModel):
+    table: TableInfo 
+    column: ColumnInfo
+    vector: VectorInfo
 
 class Vector(BaseModel):
     id: int = None
@@ -14,18 +30,32 @@ class Vector(BaseModel):
 class State:
     def __init__(self) -> None:
         self._scheduler = BackgroundScheduler()
-        self.database_engine = DatabaseEngine(INDEX)
         self.index = NoIndex()
-        pass
+        self.current_status = "idle"
+        self.last_status = "idle"
 
     def get_scheduler(self) -> BackgroundScheduler:
         return self._scheduler
     
+    def set_status(self, status:str):   
+        self.last_status = self.current_status
+        self.current_status = status
+    
+    def get_status(self)->str:
+        return {
+            "status": {
+                "current": self.current_status,
+                "last": self.last_status
+            },
+            "index_id": self.index.id
+        }  
+
     def clear(self):
         self._scheduler.shutdown()
         self._scheduler = None
-        self.database_engine = None
-        self.index = None
+        self.last_status = self.current_status
+        self.current_status = "idle"
+        self.index = NoIndex()
 
 class ConfigParser:
     def __init__(self, configuration) -> None:

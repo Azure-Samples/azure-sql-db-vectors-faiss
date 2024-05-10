@@ -4,47 +4,82 @@ import pickle
 import logging
 import numpy as np
 from .index import BaseIndex
-from .database import DatabaseEngine
-from .utils import NpEncoder, IndexStatus, IndexSubStatus, UpdateResult
+from .database import DatabaseEngine, DatabaseEngineException
+from .utils import NpEncoder, IndexStatus, IndexSubStatus, UpdateResult, DataSourceConfig
 import faiss
 
 _logger = logging.getLogger("uvicorn")
 
 class FaissIndex(BaseIndex):
-    def __init__(self, db:DatabaseEngine) -> None:
+    def __init__(self) -> None:
         super().__init__()
+        self.index = None
+        self._db = None
         self._data_version:int = 0
         self._saved_data_version:int = 0
-        self._db = db
-        self.index:faiss.IndexFlat = None
 
-    def create(self):
-        self.status = IndexStatus.CREATING
-        self.index = None
-        
-        _logger.info(f"Starting create index #{self._index_num}...")
+    def from_config(config:DataSourceConfig):
+        index = FaissIndex()
+        index._db = DatabaseEngine.from_config(config)
+        return index
 
-        _logger.info("Loading data...")
-        version, ids, vectors = self._db.load_vectors_from_db()
-        
-        _logger.info("Creating index...")
-        nvp = np.asarray(vectors)
-        d = nvp.shape[1]
-        index = faiss.IndexFlatIP(d)
-        
-        #nlist = 100
-        #ivf = faiss.IndexIVFFlat(index, d, nlist)
-        #ivf.train(nvp)
-        #ivf.nprobe = 4
-        
-        index_map = faiss.IndexIDMap(index)
-        index_map.add_with_ids(nvp, ids)
-        _logger.info(f"Done creating index ({type(index_map)}).")
+    def from_id(id:int):
+        index = FaissIndex()
+        index._db = DatabaseEngine.from_id(id)
+        return index
+    
+    def initialize_build(self, force: bool)->int:
+        id = None
+        try:
+            self._db.initialize();
+            id = self._db.create_index_metadata(force)
+            self.id = id
+            _logger.info(f"Index has id {id}.")
+        except DatabaseEngineException as e:
+            raise Exception(f"Error initializing index: {str(e)}")
+        return id
+    
+    def build(self):
+        if (self.id == None):
+            raise Exception("Index has not been initialized.")
 
-        self.index = index_map
-        self._data_version = version
-        self.status = IndexStatus.TRAINED
-        self.substatus = IndexSubStatus.READY
+        try:
+            self.index = None
+            
+            _logger.info(f"Starting create index...")
+
+            _logger.info("Loading data...")
+            self._db.update_index_metadata("LOADING_DATA")
+            version, ids, vectors = self._db.load_vectors_from_db()
+            
+            _logger.info("Creating index...")
+            self._db.update_index_metadata("FAISS_INDEX_BUILD")
+            nvp = np.asarray(vectors)
+            vector_count:int = np.shape(nvp)[0]
+            dimensions_count:int = np.shape(nvp)[1]
+        
+            d = nvp.shape[1]
+            index = faiss.IndexFlatIP(d)
+            
+            #nlist = 100
+            #ivf = faiss.IndexIVFFlat(index, d, nlist)
+            #ivf.train(nvp)
+            #ivf.nprobe = 4
+            
+            index_map = faiss.IndexIDMap(index)
+            index_map.add_with_ids(nvp, ids)
+            _logger.info(f"Index #{self.id} ({type(index_map)}) created.")
+            self.index = index_map
+            self._data_version = version
+
+            _logger.info(f"Finalizing index #{self.id} metadata...")
+            self._db.finalize_index_metadata(vectors_count)
+            _logger.info(f"Done finalizing metadata.")
+
+            _logger.info(f"Index #{self.id} created.")
+        except Exception as e:  
+            self._db.update_index_metadata("ERROR_DURING_CREATION")
+            raise e    
 
     def load(self):
         self.status = IndexStatus.LOADING
